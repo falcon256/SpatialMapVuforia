@@ -42,6 +42,16 @@ public class TranslationController : MonoBehaviour
         Debug.Log("Stopping path capture.");
     }
 
+    public void hidePath()
+    {
+        lineRenderer.enabled = false;
+    }
+
+    public void showPath()
+    {
+        lineRenderer.enabled = true;
+    }
+
     private void handlePathCapture()
     {
         if (waypoints == null || lineRenderer == null)
@@ -50,7 +60,7 @@ public class TranslationController : MonoBehaviour
             Debug.LogError("An object we depend on is not set!");
             return;
         }
-        Vector3 pos = Camera.main.transform.position + new Vector3(0.0f, -0.2f, 0.0f);
+        Vector3 pos = Camera.main.transform.position + new Vector3(0.0f, -0.3f, 0.0f);
         if (waypoints.Count <= 0)
         {
             lineRenderer.enabled = false;
@@ -75,7 +85,7 @@ public class TranslationController : MonoBehaviour
             lineRenderer.positionCount = waypoints.Count;
             lineRenderer.SetPositions(waypoints.ToArray());
         }
-        Debug.Log("Tick: " + lineRenderer.enabled + " " + waypoints.Count + " " + lineRenderer.positionCount);
+        //Debug.Log("Tick: " + lineRenderer.enabled + " " + waypoints.Count + " " + lineRenderer.positionCount);
     }
 
     private void clearPath()
@@ -85,4 +95,5 @@ public class TranslationController : MonoBehaviour
         lineRenderer.SetPositions(waypoints.ToArray());       
         Debug.Log("Clearing path.");
     }
+
 }
