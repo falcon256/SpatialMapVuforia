@@ -82,10 +82,10 @@ public class NetworkMeshSource : MonoBehaviour
         //udpClient = new DatagramSocket();
         //udpClient.Control.DontFragment = true;
         tcpClient = new Windows.Networking.Sockets.StreamSocket();
-        tcpClient.Control.OutboundBufferSizeInBytes = 128000;
+        tcpClient.Control.OutboundBufferSizeInBytes = 1500;
         tcpClient.Control.NoDelay = false;
         tcpClient.Control.KeepAlive = false;
-        tcpClient.Control.OutboundBufferSizeInBytes = 65536;
+        tcpClient.Control.OutboundBufferSizeInBytes = 1500;
         while(!connected)
         {
             try
@@ -191,8 +191,10 @@ public class NetworkMeshSource : MonoBehaviour
         if (!connected)
             return;
 
+        
         try
         {
+            SendHeadsetLocation();
             List<Mesh> meshes = new List<Mesh>();
             meshes.Add(m);
             byte[] meshData =  SimpleMeshSerializer.Serialize(meshes);
@@ -209,7 +211,7 @@ public class NetworkMeshSource : MonoBehaviour
             byte[] sendData = Combine(bytes, meshData);
             if(sendData.Length>0)
                 enqueueOutgoing(sendData);
-
+            SendHeadsetLocation();
         }
         catch (Exception e)
         {
@@ -261,16 +263,20 @@ public class NetworkMeshSource : MonoBehaviour
     {
 
     }
-#if !UNITY_EDITOR
+
+
+
+
     public async void SendHeadsetLocation()
     {
+#if !UNITY_EDITOR
         if (!connected)
             return;
         try
         {
             Vector3 location = new Vector3();
             Quaternion rotation = new Quaternion();
-            byte[] bytes = new byte[4 + 12 + 20]; // 4 bytes per float
+            byte[] bytes = new byte[36]; // 4 bytes per float
             System.Buffer.BlockCopy(BitConverter.GetBytes(36), 0, bytes, 0, 4);
             System.Buffer.BlockCopy(BitConverter.GetBytes(2), 0, bytes, 4, 4);//type of packet
             System.Buffer.BlockCopy(BitConverter.GetBytes(location.x), 0, bytes, 8, 4);
@@ -288,8 +294,9 @@ public class NetworkMeshSource : MonoBehaviour
             Debug.Log(e.ToString());
             return;
         }
-    }
 #endif
+    }
+
 
 
 
@@ -311,7 +318,7 @@ public class NetworkMeshSource : MonoBehaviour
     private async void flush()
     {         
         await writer.StoreAsync();
-        await writer.FlushAsync();
+        //await writer.FlushAsync();
     }
 
     private async void sendOutgoingPacket(messagePackage sendData)

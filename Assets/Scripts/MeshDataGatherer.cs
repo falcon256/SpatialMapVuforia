@@ -59,50 +59,41 @@ public class MeshDataGatherer : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (lastMeshDownlinkTime + 5.0f < Time.realtimeSinceStartup)
+        if (lastMeshDownlinkTime + 10.0f < Time.realtimeSinceStartup)
         {
-            /*
-            List meshFilters = SpatialMappingManager.Instance.GetMeshFilters();
-
-            for (int i = 0; i < meshFilters.Count; i++)
-            {
-                NetworkMeshSource.getSingleton().sendMesh(meshFilters[i].mesh,
-                            meshFilters[i].gameObject.transform.position,
-                            meshFilters[i].gameObject.transform.rotation);
-               
-
-            }*/
             // you can't block here and wait for the camera capture.
             // Send the old data and trigger a new capture.
-            // NetworkMeshSource.getSingleton()
-
+            // NetworkMeshSource.getSingleton()           
             for (int index = 0; index < SurfacesList.Count; index++)
             {
                 SurfaceEntry item = SurfacesList[index];
-                //if(item.m_BakedState== BakedState.Baked)
-                //{
-                GameObject go = item.m_Surface;
-                if (go)
+                if(item.m_BakedState== BakedState.Baked || item.m_BakedState == BakedState.UpdatePostBake)
                 {
-                    MeshFilter MFer = go.GetComponent<MeshFilter>();
-                    if (MFer)
+                    GameObject go = item.m_Surface;
+                    if (go)
                     {
-                        Mesh meesh = MFer.mesh;
-                        if (meesh)
-                        {
-                            #if !UNITY_EDITOR
-                            NetworkMeshSource.getSingleton().sendMesh(meesh,
-                                    go.transform.position,
-                                    go.transform.rotation);
-#endif
+                        MeshFilter[] meshFilters = go.GetComponents<MeshFilter>();
+                        for (int mfi = 0; mfi < meshFilters.Length; mfi++)
+                        { 
+                            MeshFilter MFer = meshFilters[mfi];
+
+                            if (MFer)
+                            {
+
+                                Mesh meesh = MFer.mesh;
+                                if (meesh&&meesh.triangles.Length>0)
+                                {
+    #if !UNITY_EDITOR
+                                NetworkMeshSource.getSingleton().sendMesh(meesh,
+                                        go.transform.position,
+                                        go.transform.rotation);
+    #endif
+                                }
+                            }
                         }
                     }
-                }
-                //}
-               
+                }              
             }
-
-
             lastMeshDownlinkTime = Time.realtimeSinceStartup;
         }
     }
@@ -210,13 +201,6 @@ public class MeshDataGatherer : MonoBehaviour
                     {
                         entry.m_BakedState = BakedState.UpdatePostBake;
                         entry.m_UpdateTime = updateTime;
-
-                        //send mesh to the ground staton. //old way
-                        /*
-                        NetworkMeshSource.getSingleton().sendMesh(entry.m_Surface.GetComponent<MeshFilter>().mesh,
-                            entry.m_Surface.transform.position,
-                            entry.m_Surface.transform.rotation);
-                            */
                     }
                 }
                 else
@@ -237,11 +221,6 @@ public class MeshDataGatherer : MonoBehaviour
                     m_Surfaces[id.handle] = entry;
                     if(!SurfacesList.Contains(entry))
                         SurfacesList.Add(entry);
-
-                    
-
-
-
                 }
                 break;
 
@@ -272,12 +251,6 @@ public class MeshDataGatherer : MonoBehaviour
             Assert.IsTrue(sd.outputMesh == entry.m_Surface.GetComponent<MeshFilter>());
             Assert.IsTrue(sd.outputAnchor == entry.m_Surface.GetComponent<WorldAnchor>());
             entry.m_BakedState = BakedState.Baked;
-            //send mesh to the ground staton. old way
-            /*
-            NetworkMeshSource.getSingleton().sendMesh(entry.m_Surface.GetComponent<MeshFilter>().mesh,
-                entry.m_Surface.transform.position,
-                entry.m_Surface.transform.rotation);
-                */
         }
         else
         {
@@ -285,7 +258,4 @@ public class MeshDataGatherer : MonoBehaviour
             Assert.IsTrue(false);
         }
     }
-
-
-
 }

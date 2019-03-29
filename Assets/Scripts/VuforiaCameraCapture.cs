@@ -105,7 +105,7 @@ public class VuforiaCameraCapture : MonoBehaviour
     
     void FixedUpdate()
     {
-        if(lastCaptureTime+10<Time.realtimeSinceStartup)
+        if(lastCaptureTime+10.0f<Time.realtimeSinceStartup)
         {
             TrackerManager.Instance.GetTracker<ObjectTracker>().Stop();
             CameraDevice.Instance.Stop();
@@ -130,20 +130,7 @@ public class VuforiaCameraCapture : MonoBehaviour
     {
         return S;
     }
-    /*
-    private void RegisterFormat()
-    {
-        if (CameraDevice.Instance.SetFrameFormat(mPixelFormat, true))
-        {
-            Debug.Log("Successfully registered camera pixel format " + mPixelFormat.ToString());
-            mFormatRegistered = true;
-        }
-        else
-        {
-            Debug.LogError("Failed to register camera pixel format " + mPixelFormat.ToString());
-            mFormatRegistered = false;
-        }
-    }*/
+
     private void UnregisterFormat()
     {
         Debug.Log("Unregistering camera pixel format " + mPixelFormat.ToString());
