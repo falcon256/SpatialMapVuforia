@@ -6,6 +6,7 @@ using System.Text;
 using System.Net;
 using System.Net.Sockets;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 #if !UNITY_EDITOR
 using Windows.Networking;
@@ -28,18 +29,29 @@ public class NetworkMeshSource : MonoBehaviour
 
     private static NetworkMeshSource networkMeshSourceSingleton = null;
     public static NetworkMeshSource getSingleton() { return networkMeshSourceSingleton; }
-
     public int serverPort = 32123;
     public int targetPort = 32123;
-    public string targetIP = "192.168.137.1";
+    public string targetIP = "";
+    public bool targetIPReady = false;
+    public bool socketStarted = false;
     public volatile bool connected = false;
     private ConcurrentQueue<messagePackage> outgoingQueue = null;
+    private byte[] incomingBuffer = null;
+    private Stack<LineRenderer> lineRenderers = null;
+    private ConcurrentQueue<lrStruct> incomingLineRenderers = null;
+    private bool undoLineRenderer = false;
+    public Material LineRendererDefaultMaterial = null;
+    private bool startConnect = false;
+    private int lengthOfNextPacket = -1;
 #if !UNITY_EDITOR
-    //public DatagramSocket udpClient = null;
-    public StreamSocket tcpClient = null;
+ public StreamSocket tcpClient = null;
     public Windows.Storage.Streams.IOutputStream outputStream = null;
-    DataWriter writer = null;//new DataWriter(outputStream);
-
+    public Windows.Storage.Streams.IInputStream inputStream = null;
+    DataWriter writer = null;
+    DataReader reader = null;
+    //udp broadcast listening
+    DatagramSocket listenerSocket = null;
+    const string udpPort = "32124";
 #endif
 
     private UnityEngine.XR.WSA.WebCam.PhotoCapture photoCaptureObject = null;
@@ -53,6 +65,12 @@ public class NetworkMeshSource : MonoBehaviour
     private Quaternion cameraEndRotation = Quaternion.identity;
 
 
+
+    private struct lrStruct
+    {
+        public float r, g, b, a, pc, sw, ew;
+        public Vector3[] verts;
+    }
 
     private class messagePackage
     {
@@ -70,19 +88,100 @@ public class NetworkMeshSource : MonoBehaviour
             Destroy(this);
             return;
         }
+
+        lineRenderers = new Stack<LineRenderer>();
+        incomingLineRenderers = new ConcurrentQueue<lrStruct>();
         outgoingQueue = new ConcurrentQueue<messagePackage>();
         networkMeshSourceSingleton = this;
-        setupSocket();
+#if !UNITY_EDITOR
+        Listen();
+#endif
     }
 
-    public async void setupSocket()
+#if !UNITY_EDITOR
+    public async Task HandleSocket()
+        {
+
+        if(!socketStarted&&targetIPReady&&!connected&&!startConnect&&tcpClient==null)
+        {
+            tcpClient = new Windows.Networking.Sockets.StreamSocket();
+            tcpClient.Control.NoDelay = false;
+            tcpClient.Control.KeepAlive = false;
+            tcpClient.Control.OutboundBufferSizeInBytes = 1500;
+            startConnect=true;
+            await tcpClient.ConnectAsync(new HostName(targetIP), "" + targetPort);          
+            outputStream = tcpClient.OutputStream;
+            inputStream = tcpClient.InputStream;
+            writer = new DataWriter(outputStream);
+            reader = new DataReader(inputStream);
+            reader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
+            reader.ByteOrder = Windows.Storage.Streams.ByteOrder.LittleEndian;
+            connected = true;
+        }
+
+        if(connected&&reader.UnconsumedBufferLength>4)
+        {
+            lengthOfNextPacket=reader.ReadInt32();
+        }
+        if(lengthOfNextPacket>0&&reader.UnconsumedBufferLength>lengthOfNextPacket)
+        {
+            int packetType = reader.ReadInt32();
+            float r = reader.ReadSingle();
+            float g = reader.ReadSingle();
+            float b = reader.ReadSingle();
+            float a = reader.ReadSingle();
+            int count = reader.ReadInt32();// this is actually just for padding...
+            float sw = reader.ReadSingle();
+            float ew = reader.ReadSingle();
+            byte[] packet = new byte[lengthOfNextPacket-32];
+            reader.ReadBytes(packet);
+            if(packetType==4&&packet.Length>0)
+            {
+                lrStruct l = new lrStruct();
+                l.r = r;
+                l.g = g;
+                l.b = b;
+                l.a = a;
+                l.pc = count;
+                l.sw = sw;
+                l.ew = ew;
+                l.verts = new Vector3[count];
+                for(int i = 0; i < count; i++)//Dan actually wrote this one from scratch, so might be bugged.
+                {                 
+                    l.verts[i]=new Vector3(BitConverter.ToSingle(packet, i*12+0), BitConverter.ToSingle(packet, i * 12 + 4),
+                        BitConverter.ToSingle(packet, i * 12 + 8));
+                }
+                incomingLineRenderers.Enqueue(l);
+            }
+            if (packetType == 5)
+                undoLineRenderer = true;
+            lengthOfNextPacket=-1;
+        }
+
+
+
+
+
+}
+#endif
+
+    public void doSocketSetup()
+    {
+        //Task t = 
+#if !UNITY_EDITOR
+        //setupSocket();
+#endif
+        //t.Start();
+    }
+#if !UNITY_EDITOR
+    public async Task setupSocket()
     {
 
-#if !UNITY_EDITOR
+
         //udpClient = new DatagramSocket();
         //udpClient.Control.DontFragment = true;
         tcpClient = new Windows.Networking.Sockets.StreamSocket();
-        tcpClient.Control.OutboundBufferSizeInBytes = 1500;
+        //tcpClient.Control.OutboundBufferSizeInBytes = 1500;
         tcpClient.Control.NoDelay = false;
         tcpClient.Control.KeepAlive = false;
         tcpClient.Control.OutboundBufferSizeInBytes = 1500;
@@ -94,9 +193,68 @@ public class NetworkMeshSource : MonoBehaviour
                 await tcpClient.ConnectAsync(new HostName(targetIP), "" + targetPort);
             
                 outputStream = tcpClient.OutputStream;
+                inputStream = tcpClient.InputStream;
                 writer = new DataWriter(outputStream);
+                reader = new DataReader(inputStream);
+                reader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
+                reader.ByteOrder = Windows.Storage.Streams.ByteOrder.LittleEndian;
                 connected = true;
-                //outputStream = await udpClient.GetOutputStreamAsync(new HostName(targetIP), "" + targetPort);
+                //incomingBuffer = new byte[0];
+                while (connected)
+                {
+                    
+                    if(reader.UnconsumedBufferLength>4)
+                    {
+        /*
+                        int incomingSize = reader.ReadInt32();
+                        if(incomingSize>0&&incomingSize < 100000)
+                        {
+                            await reader.LoadAsync((uint)incomingSize);//preloads the buffer with the data which makes the following not needed.
+                            
+                            
+                            
+                            int packetType = reader.ReadInt32();
+                            float r = reader.ReadSingle();
+                            float g = reader.ReadSingle();
+                            float b = reader.ReadSingle();
+                            float a = reader.ReadSingle();
+                            int count = reader.ReadInt32();// this is actually just for padding...
+                            float sw = reader.ReadSingle();
+                            float ew = reader.ReadSingle();
+                            byte[] packet = new byte[incomingSize-32];
+                            reader.ReadBytes(packet);
+                            if(packetType==4&&packet.Length>0)
+                            {
+                                lrStruct l = new lrStruct();
+                                l.r = r;
+                                l.g = g;
+                                l.b = b;
+                                l.a = a;
+                                l.pc = count;
+                                l.sw = sw;
+                                l.ew = ew;
+                                l.verts = new Vector3[count];
+                                for(int i = 0; i < count; i++)//Dan actually wrote this one from scratch, so might be bugged.
+                                {                 
+                                    l.verts[i]=new Vector3(BitConverter.ToSingle(packet, i*12+0), BitConverter.ToSingle(packet, i * 12 + 4),
+                                        BitConverter.ToSingle(packet, i * 12 + 8));
+                                }
+                                incomingLineRenderers.Enqueue(l);
+                            }
+                            if (packetType == 5)
+                                undoLineRenderer = true;
+
+
+                        }
+                        else
+                        {
+                            //TODO Handle it.
+                        }
+        */
+                    }
+        
+                }
+                    
             }
             catch (Exception e)
             {
@@ -104,8 +262,31 @@ public class NetworkMeshSource : MonoBehaviour
                 return;
             }
         }
+
+}
 #endif
+#if !UNITY_EDITOR
+    private async void Listen()
+    {
+        listenerSocket = new DatagramSocket();
+        listenerSocket.MessageReceived += udpMessageReceived;
+        await listenerSocket.BindServiceNameAsync(udpPort);
     }
+    
+    async void udpMessageReceived(DatagramSocket socket, DatagramSocketMessageReceivedEventArgs args)
+    {
+        if (!targetIPReady)
+        {
+            DataReader reader = args.GetDataReader();
+            uint len = reader.UnconsumedBufferLength;
+            string msg = reader.ReadString(len);
+            string remoteHost = args.RemoteAddress.DisplayName;
+            targetIP = msg;
+            targetIPReady = true;
+        }
+    }
+#endif
+
     /*
 #if !UNITY_EDITOR
     public void captureImageData()
@@ -194,7 +375,7 @@ public class NetworkMeshSource : MonoBehaviour
         
         try
         {
-            SendHeadsetLocation();
+            //SendHeadsetLocation();
             List<Mesh> meshes = new List<Mesh>();
             meshes.Add(m);
             byte[] meshData =  SimpleMeshSerializer.Serialize(meshes);
@@ -274,8 +455,8 @@ public class NetworkMeshSource : MonoBehaviour
             return;
         try
         {
-            Vector3 location = new Vector3();
-            Quaternion rotation = new Quaternion();
+            Vector3 location = Camera.main.transform.position;
+            Quaternion rotation = Camera.main.transform.rotation;           
             byte[] bytes = new byte[36]; // 4 bytes per float
             System.Buffer.BlockCopy(BitConverter.GetBytes(36), 0, bytes, 0, 4);
             System.Buffer.BlockCopy(BitConverter.GetBytes(2), 0, bytes, 4, 4);//type of packet
@@ -303,6 +484,17 @@ public class NetworkMeshSource : MonoBehaviour
 #if !UNITY_EDITOR
     void FixedUpdate()
     {
+        Task t = HandleSocket();
+    while(!t.IsCompleted)
+    {
+        
+    }
+    /*
+        if(!socketStarted&&targetIPReady)
+        {
+            socketStarted = true;
+            doSocketSetup();
+        }*/
         if(!outgoingQueue.IsEmpty)
         {
             messagePackage mp = null;
@@ -310,6 +502,20 @@ public class NetworkMeshSource : MonoBehaviour
             if(mp!=null)
             {
                 sendOutgoingPacket(mp);
+            }
+        }
+    
+        if(!incomingLineRenderers.IsEmpty)
+        {           
+            lrStruct l = new lrStruct();
+            if(incomingLineRenderers.TryDequeue(out l))
+            {
+                LineRenderer lr = this.gameObject.AddComponent<LineRenderer>();
+                lr.material = new Material(LineRendererDefaultMaterial);//copy
+                lr.material.color = new Color(l.r, l.g, l.b, l.a);
+                lr.startWidth = l.sw;
+                lr.endWidth = l.ew;
+                lr.endColor = lr.startColor = new Color(l.r, l.g, l.b, l.a);
             }
         }
         //SendHeadsetLocation();

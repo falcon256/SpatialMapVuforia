@@ -269,7 +269,11 @@ MonoBehaviour:
   serverPort: 32123
   targetPort: 32123
   targetIP: 192.168.137.1
+  targetIPReady: 0
+  socketStarted: 0
   connected: 0
+  LineRendererDefaultMaterial: {fileID: 2100000, guid: bdaddec689357db4ea505c9f4c1b3a10,
+    type: 2}
 --- !u!4 &414102392
 Transform:
   m_ObjectHideFlags: 0
