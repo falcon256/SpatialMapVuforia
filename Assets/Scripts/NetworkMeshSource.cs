@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using System;
 using System.Text;
-using System.Net;
-using System.Net.Sockets;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 
@@ -52,6 +50,11 @@ public class NetworkMeshSource : MonoBehaviour
     //udp broadcast listening
     DatagramSocket listenerSocket = null;
     const string udpPort = "32124";
+
+    StreamSocketListener _streamSocket = null;
+
+
+
 #endif
 
     private UnityEngine.XR.WSA.WebCam.PhotoCapture photoCaptureObject = null;
@@ -97,7 +100,7 @@ public class NetworkMeshSource : MonoBehaviour
         Listen();
 #endif
     }
-
+    /*
 #if !UNITY_EDITOR
     public async Task HandleSocket()
         {
@@ -114,6 +117,7 @@ public class NetworkMeshSource : MonoBehaviour
             inputStream = tcpClient.InputStream;
             writer = new DataWriter(outputStream);
             reader = new DataReader(inputStream);
+            reader.InputStreamOptions = InputStreamOptions.Partial;
             reader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
             reader.ByteOrder = Windows.Storage.Streams.ByteOrder.LittleEndian;
             connected = true;
@@ -164,48 +168,33 @@ public class NetworkMeshSource : MonoBehaviour
 
 }
 #endif
+*/
 
-    public void doSocketSetup()
-    {
-        //Task t = 
+
+
+
+
 #if !UNITY_EDITOR
-        //setupSocket();
-#endif
-        //t.Start();
-    }
-#if !UNITY_EDITOR
-    public async Task setupSocket()
+
+
+    private async void _streamSocket_ConnectionReceived(StreamSocketListener sender,
+        StreamSocketListenerConnectionReceivedEventArgs args)
+{
+    using (IInputStream inStream = args.Socket.InputStream)
     {
+        reader = new DataReader(inStream);
+        reader.InputStreamOptions = InputStreamOptions.Partial;
+        outputStream = args.Socket.OutputStream;
+        inputStream = inStream;
+        writer = new DataWriter(outputStream);
+        connected = true;
 
-
-        //udpClient = new DatagramSocket();
-        //udpClient.Control.DontFragment = true;
-        tcpClient = new Windows.Networking.Sockets.StreamSocket();
-        //tcpClient.Control.OutboundBufferSizeInBytes = 1500;
-        tcpClient.Control.NoDelay = false;
-        tcpClient.Control.KeepAlive = false;
-        tcpClient.Control.OutboundBufferSizeInBytes = 1500;
-        while(!connected)
-        {
-            try
-            {
-                //await udpClient.BindServiceNameAsync("" + targetPort);
-                await tcpClient.ConnectAsync(new HostName(targetIP), "" + targetPort);
-            
-                outputStream = tcpClient.OutputStream;
-                inputStream = tcpClient.InputStream;
-                writer = new DataWriter(outputStream);
-                reader = new DataReader(inputStream);
-                reader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
-                reader.ByteOrder = Windows.Storage.Streams.ByteOrder.LittleEndian;
-                connected = true;
-                //incomingBuffer = new byte[0];
-                while (connected)
+        while (connected)
                 {
-                    
+                    await reader.LoadAsync(8192);
                     if(reader.UnconsumedBufferLength>4)
                     {
-        /*
+        
                         int incomingSize = reader.ReadInt32();
                         if(incomingSize>0&&incomingSize < 100000)
                         {
@@ -250,19 +239,109 @@ public class NetworkMeshSource : MonoBehaviour
                         {
                             //TODO Handle it.
                         }
-        */
+        
                     }
         
                 }
+    }
+
+    System.Diagnostics.Debug.WriteLine("Finished reading");
+}
+
+
+
+    public async Task setupSocket()
+    {
+
+
+        //udpClient = new DatagramSocket();
+        //udpClient.Control.DontFragment = true;
+        tcpClient = new Windows.Networking.Sockets.StreamSocket();
+        //tcpClient.Control.OutboundBufferSizeInBytes = 1500;
+        tcpClient.Control.NoDelay = false;
+        tcpClient.Control.KeepAlive = false;
+        tcpClient.Control.OutboundBufferSizeInBytes = 1500;
+        while(!connected)
+        {
+            try
+            {
+                //await udpClient.BindServiceNameAsync("" + targetPort);
+                await tcpClient.ConnectAsync(new HostName(targetIP), "" + targetPort);
+            
+                outputStream = tcpClient.OutputStream;
+                inputStream = tcpClient.InputStream;
+                writer = new DataWriter(outputStream);
+                reader = new DataReader(inputStream);
+                reader.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
+                reader.ByteOrder = Windows.Storage.Streams.ByteOrder.LittleEndian;
+                reader.InputStreamOptions = InputStreamOptions.Partial;
+                connected = true;
+                //incomingBuffer = new byte[0];
+                /*
+                while (connected)
+                {
                     
+                    if(reader.UnconsumedBufferLength>4)
+                    {
+        
+                        int incomingSize = reader.ReadInt32();
+                        if(incomingSize>0&&incomingSize < 100000)
+                        {
+                            await reader.LoadAsync((uint)incomingSize);//preloads the buffer with the data which makes the following not needed.
+                            
+                            
+                            
+                            int packetType = reader.ReadInt32();
+                            float r = reader.ReadSingle();
+                            float g = reader.ReadSingle();
+                            float b = reader.ReadSingle();
+                            float a = reader.ReadSingle();
+                            int count = reader.ReadInt32();// this is actually just for padding...
+                            float sw = reader.ReadSingle();
+                            float ew = reader.ReadSingle();
+                            byte[] packet = new byte[incomingSize-32];
+                            reader.ReadBytes(packet);
+                            if(packetType==4&&packet.Length>0)
+                            {
+                                lrStruct l = new lrStruct();
+                                l.r = r;
+                                l.g = g;
+                                l.b = b;
+                                l.a = a;
+                                l.pc = count;
+                                l.sw = sw;
+                                l.ew = ew;
+                                l.verts = new Vector3[count];
+                                for(int i = 0; i < count; i++)//Dan actually wrote this one from scratch, so might be bugged.
+                                {                 
+                                    l.verts[i]=new Vector3(BitConverter.ToSingle(packet, i*12+0), BitConverter.ToSingle(packet, i * 12 + 4),
+                                        BitConverter.ToSingle(packet, i * 12 + 8));
+                                }
+                                incomingLineRenderers.Enqueue(l);
+                            }
+                            if (packetType == 5)
+                                undoLineRenderer = true;
+
+
+                        }
+                        else
+                        {
+                            //TODO Handle it.
+                        }
+        
+                    }
+        
+                }
+                */    
             }
             catch (Exception e)
             {
                 Debug.Log(e.ToString());
                 return;
             }
+        
         }
-
+        
 }
 #endif
 #if !UNITY_EDITOR
@@ -484,17 +563,17 @@ public class NetworkMeshSource : MonoBehaviour
 #if !UNITY_EDITOR
     void FixedUpdate()
     {
-        Task t = HandleSocket();
-    while(!t.IsCompleted)
-    {
-        
-    }
-    /*
+    //    Task t = HandleSocket();
+   // while(!t.IsCompleted)
+    //{
+    //    
+   // }
+    
         if(!socketStarted&&targetIPReady)
         {
             socketStarted = true;
-            doSocketSetup();
-        }*/
+            setupSocket();
+        }
         if(!outgoingQueue.IsEmpty)
         {
             messagePackage mp = null;

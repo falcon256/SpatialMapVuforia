@@ -5,6 +5,7 @@ using UnityEngine.XR.WSA.WebCam;
 using UnityEngine.XR.WSA.Input;
 using UnityEngine.UI;
 using Vuforia;
+using System;
 
 public class VuforiaCameraCapture : MonoBehaviour
 {
@@ -20,6 +21,8 @@ public class VuforiaCameraCapture : MonoBehaviour
 
     //test variable
     public float lastCaptureTime = 0f;
+
+    public UnityEngine.UI.Text outTextGO = null;
 
     //old version variables
 
@@ -96,6 +99,8 @@ public class VuforiaCameraCapture : MonoBehaviour
                         m_Texture = tex;
                         m_RawImageBig.texture = tex;
                         m_RawImageBig.material.mainTexture = tex;
+                        QRCodeChecker qr = QRCodeChecker.getSingleton();
+                        Debug.Log(qr.findQRCodeInImage(m_Texture));
                     }
                 }
             }
@@ -105,7 +110,7 @@ public class VuforiaCameraCapture : MonoBehaviour
     
     void FixedUpdate()
     {
-        if(lastCaptureTime+10.0f<Time.realtimeSinceStartup)
+        if (lastCaptureTime + 10.0f < Time.realtimeSinceStartup)
         {
             TrackerManager.Instance.GetTracker<ObjectTracker>().Stop();
             CameraDevice.Instance.Stop();
@@ -117,12 +122,26 @@ public class VuforiaCameraCapture : MonoBehaviour
 #if !UNITY_EDITOR
             NetworkMeshSource.getSingleton().sendImage(m_Texture,Camera.main.transform.position, Camera.main.transform.rotation);
 #endif
-            //m_RawImageBig.texture = m_Texture;
-            //m_RawImageBig.mainTexture = m_Texture;
-            //m_RawImageBig.SetNativeSize(); holy giant plane batman.
-            //m_RawImageBig.material.SetTexture(m_Texture);
-            //m_RawImageBig.material.mainTexture = m_Texture;
+        try { 
+            QRCodeChecker qr = QRCodeChecker.getSingleton();
+            string o = qr.findQRCodeInImage(m_Texture);
+            Debug.Log(o);
+            if (outTextGO != null && o.Length > 0)
+            {
+                outTextGO.text = o;
+            }
+        } catch (Exception e)
+        {
+            Debug.Log(e.ToString());
+            outTextGO.text = "Exception Thrown";
+            return;
         }
+        //m_RawImageBig.texture = m_Texture;
+        //m_RawImageBig.mainTexture = m_Texture;
+        //m_RawImageBig.SetNativeSize(); holy giant plane batman.
+        //m_RawImageBig.material.SetTexture(m_Texture);
+        //m_RawImageBig.material.mainTexture = m_Texture;
+    }
 
     }
 
